@@ -6,6 +6,9 @@
  * and when decoding, a new file with the addition of the prefix Decode.
  * After the complete processing of the file will be three files:
  * 1. Source File 2. Compressed file (with the prefix Huff) 3. Decompressed file (with the prefix DecodeHaff)
+ *
+ * For a convenient test program already has files with names:
+ * Hamlet.txt | JaneEyre.txt | Middlemarch.txt | MLK-Dream.txt | TomSawyer.txt
  */
 
 #include <fstream>
