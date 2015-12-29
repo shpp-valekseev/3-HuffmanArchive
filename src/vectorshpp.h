@@ -3,14 +3,13 @@
  *
  * This file exports a simple implementation
  * of Vector class based on the array.
- 
+
  */
 
 #ifndef VECTORSHPP_H
 #define VECTORSHPP_H
 
 #include <iostream>
-#include <stdlib.h>
 
 /* Class VectorSHPP<ValueType>
  * --------------------------------
@@ -96,9 +95,9 @@ public:
      * -----------------------------------------------------
      * Overloads [] to select elements from this vector.
      */
-    ValueType & operator[](int);
-	
-	/* Copy constructor*/
+    const ValueType & operator[](int)const;
+
+    /* Copy constructor*/
     VectorSHPP(const VectorSHPP<ValueType> & src);
 
     /* Operator: =
@@ -129,8 +128,8 @@ private:
      * Increases dynamyc array in two times
      */
     void extendArray();
-	
-	/* Method: deepCoping;
+
+    /* Method: deepCoping;
      * Usage: deepCoping(VectorSHPP src);
      * ------------------------------------------------
      * Coping received  VectorSHPP to "this" VectorSHPP
@@ -149,7 +148,7 @@ VectorSHPP<ValueType>::VectorSHPP(){
 }
 
 template<typename ValueType>
-ValueType & VectorSHPP<ValueType>::operator[](int index){
+const ValueType & VectorSHPP<ValueType>::operator[](int index)const{
     if(index < 0 || index >= count){
         std::cout << "Fatal error: index is not valid" << std::endl;
         exit(1);
@@ -274,7 +273,6 @@ VectorSHPP<ValueType> & VectorSHPP<ValueType>::operator =(const VectorSHPP<Value
 template<typename ValueType>
 VectorSHPP<ValueType>::~VectorSHPP(){
     count = 0;
-	delete [] array;
+    delete [] array;
 }
 #endif // VECTORSHPP
-

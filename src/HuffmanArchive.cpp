@@ -5,48 +5,51 @@
  * desired file. When you archive a file, you create a new file with the prefix Huff,
  * and when decoding, a new file with the addition of the prefix Decode.
  * After the complete processing of the file will be three files:
- * 1. Source File 2. Compressed file (with the prefix Huff) 3. Decompressed file (with the prefix DecodeHaff)
+ * 1. Source File 2. Compressed file (with the prefix Huff) 3. Decompressed file (with the prefix DecodeHuff)
  *
  * For a convenient test program already has files with names:
- * Hamlet.txt | JaneEyre.txt | Middlemarch.txt | MLK-Dream.txt | TomSawyer.txt
+ * 22.png | Martin.mp3 |Hamlet.txt | JaneEyre.txt | Middlemarch.txt | MLK-Dream.txt | TomSawyer.txt
  */
 
 #include <fstream>
 #include <iostream>
 #include <string>
-#include "string.h"
 #include "console.h"
-#include "bitstream.h"
-#include "strlib.h"
 #include "filelib.h"
 #include "pqueueshpp.h"
-#include "mapshpp.h"
+
 
 using namespace std;
 
 // The structure for storing symbols and references to other structures of this type
 struct BSTNode {
-    char ch;
+    unsigned char ch;
+    bool busy = false;
     BSTNode *left, *right, *top;
 };
 
+const int NUMBER_OF_BYTES = 256;
+const int DATABITS = 8;
+
 // function prototypes
-void archiveFile(ifstream &infile, string fileName);
-MapSHPP<char, int> getAlphabet(ifstream &infile, int &length);
-PQueueSHPP<BSTNode*> getQueue (MapSHPP<char, int> &alphabet);
+void archiveFile(string fileName);
+vector<int> getAlphabet(string fileName, int &length);
+PQueueSHPP<BSTNode*> getQueue (vector<int> &alphabet);
 BSTNode* getTree(PQueueSHPP<BSTNode*> queue);
-void getTable(BSTNode* tree, string way, MapSHPP <char, string> &cipher);
-void writeArchiveFile(string fileName, MapSHPP<char, int> &alphabet, int &length, MapSHPP <char, string> &cipher);
-string toString(MapSHPP<char, int> &alphabet);
+void getTable(BSTNode* tree, string way, vector <string> &cipher);
+void writeArchiveFile(string fileName, vector<int> &alphabet, int &length, vector <string> &cipher);
+string toString(vector<int> &alphabet);
 void decodeFile(string fileName);
-string readFileDecode (string nameDecodeFile, int &colSimbol, MapSHPP<char, int> &decodeAlphabet);
+string readFileDecode (string nameDecodeFile, int &colSimbol, vector<int> &decodeAlphabet);
 void writeDecodeFile(BSTNode* decodeTree, string &textForDecode, string decodeFileName, int colSimbol);
+char makeByteFromString(string byte);
+string bitsOfByteInString(char ch);
 
 /**
- * The main method of the program, that prompts
+ * The main function of the program, that prompts
  * user for an action (A - archive or D - decompress)
  * and asks the name of the file, then calls the
- * appropriate method for the further processing of the file.
+ * appropriate function for the further processing of the file.
  */
 int main() {
     cout << "Welcome to the Huffman archiver" << endl;
@@ -57,65 +60,40 @@ int main() {
         cin >> action;
         string fileName;
         if(toLowerCase(action) == "a"){
-            ifstream infile;
             cout << "Enter the source file: " << endl;
             cin >> fileName;
-            infile.open(fileName);
-
-            // Verify the existence of the file
-            if (!infile.is_open()){
-                cout << "An error has occurred, most likely you have entered a non-existent file name." << endl;
-                cout << "Try again." << endl;
-                continue;
-            }
             cout << "Processing... " << endl;
-
-            archiveFile(infile, fileName);
-
+            archiveFile(fileName);
             cout << "Finish!" << endl;
         } else if (toLowerCase(action) == "d"){
-            cout << "Enter the source file with prefix Haff:  " << endl;
+            cout << "Enter the source file with prefix Huff:  " << endl;
             cin >> fileName;
-            ifstream infile;
-            infile.open(fileName);
-            if (!infile.is_open()){
-                cout << "An error has occurred, most likely you have entered a non-existent file name." << endl;
-                cout << "Try again." << endl;
-                continue;
-            }
-            infile.close();
             cout << "Processing... " << endl;
-
             decodeFile(fileName);
-
             cout << "Finish!" << endl;
         } else {
             cout << "You made a mistake. Try again." << endl;
         }
-
     }
-
     return 0;
 }
 
 /**
- * Method: archiveFile
- * Usage: archiveFile(ifstream &infile, string fileName)
+ * Function: archiveFile
+ * Usage: archiveFile(string fileName)
  * ____________________________________________________
  *
- * This method takes the stream read from file and
- * name of source file. Calls in the correct
- * sequence, all methods for compressing file.
+ * This function takes name of source file.
+ * Calls in the correct sequence, all functions
+ * for compressing file.
  *
- * @param infile - file stream
- * @param fileName - name file
+ * @param fileName - file name
  */
-void archiveFile(ifstream &infile, string fileName){
-    MapSHPP <char, string> cipher;
+void archiveFile(string fileName){
+    vector <string> cipher(NUMBER_OF_BYTES, "");
     BSTNode* tree;
     int length;
-    MapSHPP<char, int> alphabet = getAlphabet(infile, length);
-    infile.close();
+    vector<int> alphabet = getAlphabet(fileName, length);
     PQueueSHPP<BSTNode*> queue = getQueue(alphabet);
     tree = getTree(queue);
     string way = "";
@@ -125,60 +103,68 @@ void archiveFile(ifstream &infile, string fileName){
 }
 
 /**
- * Method: getAlphabet
- * Using: MapSHPP<char, int> alphabet = getAlphabet(ifstream &infile, int &length)
+ * Function: getAlphabet
+ * Using: vector<int> alphabet = getAlphabet(string fileName, int &length)
  * _______________________________________________________________________________
  *
  * Count the total number of characters in the file and considers how often use
  * each character in the text.
  *
- * @param infile - file stream
+ * @param fileName - file name
  * @param length - variable which must be placed in the number of characters in the file
- * @return - MapSHPP, in which the key is a symbol, and the value - number of uses it in a file
+ * @return - vector, in which the index is a symbol of the ascii table, and the value - number of uses it in a file
  */
-MapSHPP<char, int> getAlphabet(ifstream &infile, int &length){
-    MapSHPP<char, int> alphabet;
-    char ch;
-    length = 0;
+vector<int> getAlphabet(string fileName, int &length){
+    vector<int> alphabet(NUMBER_OF_BYTES, 0);
 
-    while (infile.get(ch)) {
-        if (ch != 13){ // When reading the character "Enter" does not need to read the symbol "end of line"
-            if (alphabet.containsKey(ch)){
-                int tmp =  alphabet.get(ch);
-                alphabet.put(ch, tmp+1);
-            } else {
-                alphabet.put(ch, 1);
-            }
-            length ++;
+    ifstream stream(fileName, ios::binary);
+    if(stream){
+        stream.seekg(0, stream.end);
+        length = stream.tellg();
+        stream.seekg(0, stream.beg);
+        cout << length << endl;
+        char * buffer = new char[length];
+        stream.read(buffer, length);
+        for(int i = 0; i < length; i++){
+            unsigned char ch = buffer[i];
+            alphabet[ch]++;
         }
+    } else {
+        // Verify the existence of the file
+        cout << "An error has occurred, most likely you have entered a non-existent file name." << endl;
+        exit(1);
+
     }
     return alphabet;
 }
 
 /**
- * Method: getQueue
- * Usage: PQueueSHPP<BSTNode*> queue = getQueue(MapSHPP<char, int> &alphabet)
+ * Function: getQueue
+ * Usage: PQueueSHPP<BSTNode*> queue = getQueue(vector<int> &alphabet)
  * _________________________________________________________________________
  *
- * For each symbol creates BSTNode and places this structure in a priority queue PQueueSPPP.
+ * For each symbol creates BSTNode and places this structure in a priority queue PQueueSHPPP.
  *
- * @param alphabet - MapSHPP, where the key is the character and value - its frequency of use
+ * @param alphabet - vector, in which the index is a symbol of the ascii table and value - its frequency of use
  * @return priority queue that stores the structure BSTNode and the priority is the frequency of use of the symbol.
  */
-PQueueSHPP<BSTNode*> getQueue(MapSHPP<char, int> &alphabet){
+PQueueSHPP<BSTNode*> getQueue(vector<int> &alphabet){
     PQueueSHPP<BSTNode*> queue;
     for(int i = 0; i < alphabet.size(); i++){
-        char ch = alphabet.getKey(i);
+		if(alphabet[i] != 0){
+        unsigned char ch = i;
         BSTNode *node = new BSTNode;
         node->left = node->right = 0;
+        node->busy = true;
         node->ch = ch;
-        queue.enqueue(node, alphabet.get(ch));
+        queue.enqueue(node, alphabet[i]);
+		}
     }
     return queue;
 }
 
 /**
- * Method: getTree
+ * Function: getTree
  * Using: BSTNode* node = getTree(PQueueSHPP<BSTNode*> queue)
  * _________________________________________________________
  *
@@ -207,24 +193,26 @@ BSTNode* getTree(PQueueSHPP<BSTNode*> queue){
 }
 
 /**
- * Method: getTable
- * Using: getTable(BSTNode *tree, string way, MapSHPP <char, string> &cipher)
+ * Function: getTable
+ * Using: getTable(BSTNode *tree, string way, vector<string> &cipher)
  * __________________________________________________________________________
  *
  * Passing the tree gets to each character.
  * Each character assigns a unique binary value. The longer path to
  * the character from the beginning of the tree will be longer than its value.
- * Saves values in the MapSHPP<char, string>, where the symbol - the letter
+ * Saves values in the vector<string>, where index - symbol of the table ascii
  * and the string - the unique value of this symbol
  *
  * @param tree - binary tree nodes
  * @param way - way on the binary tree
  * @param cipher - it will be stored symbol and its unique cipher
  */
-void getTable(BSTNode *tree, string way, MapSHPP <char, string> &cipher){
+void getTable(BSTNode *tree, string way, vector<string> &cipher){
     if (tree != 0){
         getTable(tree->left, way + "0", cipher);
-        if (tree->ch != 0) cipher.put(tree->ch, way);
+        if (tree->busy){
+            cipher[tree->ch] = way;
+        }
         getTable(tree->right, way + "1", cipher);
     } else {
         return;
@@ -232,8 +220,8 @@ void getTable(BSTNode *tree, string way, MapSHPP <char, string> &cipher){
 }
 
 /**
- * Method: writeArchiveFile
- * Usage: writeArchiveFile(string fileName, MapSHPP<char, int> &alphabet, int &length, MapSHPP <char, string> &cipher)
+ * Function: writeArchiveFile
+ * Usage: writeArchiveFile(string fileName, vector<int> &alphabet, int &length, vector <string> &cipher)
  * ___________________________________________________________________________________________________________________
  *
  * Recording of the compressed text file. Writes a number of characters in the source file,
@@ -241,81 +229,108 @@ void getTable(BSTNode *tree, string way, MapSHPP <char, string> &cipher){
  * the source file every character, and a new file is written to the binary value of the character in binary mode.
  *
  * @param fileName - file name
- * @param alphabet - MapSHPP in which stored all characters and the frequency of their use
+ * @param alphabet - vector in which stored all characters and the frequency of their use
  * @param length - number of symbols in the source file
  * @param cipher - characters and their unique ciphers
  */
-void writeArchiveFile(string fileName, MapSHPP<char, int> &alphabet, int &length, MapSHPP <char, string> &cipher){
-    string shifrString = integerToString(length) + toString(alphabet);
-    ofbitstream stream("Haff" + fileName);
-
-    // Writes a file number of characters and symbols with their frequency of use
-    istringbitstream readString(shifrString);
-    int tmpBin ;
-    while(tmpBin != -1){
-        tmpBin = readString.readBit();
-        if (tmpBin == 0){
-            stream.writeBit(0);
-        } else if (tmpBin == 1){
-            stream.writeBit(1);
-        }
-    }
+void writeArchiveFile(string fileName, vector<int> &alphabet, int &length, vector<string> &cipher){
+    string shifrString = toString(alphabet);
+    ofstream outputStream("Huff" + fileName, ios::binary);
+    outputStream << length << shifrString;
 
     // Open source file
-    ifstream infile;
-    infile.open(fileName);
+    ifstream sourceStream(fileName.c_str(), ios::binary);
+    if(sourceStream){
+        sourceStream.seekg(0, sourceStream.end);
+        length = sourceStream.tellg();
+        sourceStream.seekg(0, sourceStream.beg);
+        char * buffer = new char[length];
+        sourceStream.read(buffer, length);
 
-    // Writes a binary unique code corresponding to the character of the source file in binary mode.
-    char ch;
-    while (infile.get(ch)) {
-        string tmp = cipher.get(ch);
-        for(int i = 0; i < tmp.length(); i++){
-            char a = tmp[i];
-            if (a == '0'){
-                stream.writeBit(0);
-            } else if (a == '1'){
-                stream.writeBit(1);
-            }
+        string encodedText;
+        for(int k = 0; k < length; k++){
+            unsigned char fromBuf;
+            fromBuf = buffer[k];
+            encodedText += cipher[fromBuf];
         }
-    }
 
-    stream.close();
+        // Transformation string of zeros and ones in binary view
+        string result = "";
+        string str = "";
+
+        int count = encodedText.size() / DATABITS;
+        if(encodedText.size() % DATABITS != 0) {
+            count++;
+        }
+        for(int i = 0; i < count; i++){
+            str = encodedText.substr(i * DATABITS, DATABITS);
+            char ch = makeByteFromString(str);
+            result += ch;
+        }
+        outputStream << result;
+    }
+    outputStream.close();
 }
 
 /**
- * Method: toString
- * Using: string str = toString(MapSHPP<char, int> &alphabet)
+ * Function: makeByteFromString
+ * Using: char byte = makeByteFromString(string str)
+ * __________________________________________________
+ *
+ * Function takes a string of 8 characters "0" and "1"
+ * and converts them into a single byte
+ *
+ * @param str - string of 8 "0" and "1"
+ * @return one byte
+ */
+char makeByteFromString(string str){
+    int byte = 0;
+    int actualValue = NUMBER_OF_BYTES / 2;
+    for (int i = 0; i < DATABITS; i++){
+        if (str[i] == '1'){
+            byte += actualValue;
+        }
+        actualValue = actualValue / 2;
+    }
+    return (unsigned char) byte;
+}
+
+/**
+ * Function: toString
+ * Using: string str = toString(vector<int> &alphabet)
  * _________________________________________________________
  *
- * transfer values of MapSHPP in a string
+ * transfer values of vector in a string
  *
- * @param alphabet - MapSHPP in which stored all characters and the frequency of their use
+ * @param alphabet - vector in which stored all characters and the frequency of their use
  * @return - string
  */
-string toString(MapSHPP<char, int> &alphabet){
+string toString(vector<int> &alphabet){
     string res ="{";
     for(int i = 0; i < alphabet.size(); i++){
-        char ch = alphabet.getKey(i);
-        res += ch;
-        res += ":";
-        res += integerToString(alphabet.get(ch));
-        res += ';';
+        if(alphabet[i] != 0){
+            unsigned char ch = i;
+            res += ch;
+            res += ":";
+            res += integerToString(alphabet[i]);
+            res += ';';
+        }
     }
     res += "}}"; //mark end of the coding table in archive file
     return res;
 }
 
 /**
- * Method: decodeFile
+ * Function: decodeFile
  * Usage: decodeFile(string fileName)
  * ___________________________________
  *
- * Calls in the correct sequence, all methods for decompressing the file.
+ * Calls in the correct sequence, all functions for decompressing the file.
  *
  * @param fileName - file name
  */
 void decodeFile(string fileName){
-    MapSHPP<char, int> decodeAlphabet;
+    vector<int> decodeAlphabet(NUMBER_OF_BYTES, 0);
     int colSimbol;
     string textForDecode = readFileDecode (fileName, colSimbol, decodeAlphabet);
     PQueueSHPP<BSTNode*> decodeQueue = getQueue(decodeAlphabet);
@@ -324,22 +339,21 @@ void decodeFile(string fileName){
 }
 
 /**
- * Method: readFileDecode
- * Using: string str = readFileDecode (string nameDecodeFile, int &colSimbol, MapSHPP<char, int> &decodeAlphabet)
+ * Function: readFileDecode
+ * Using: string str = readFileDecode (string nameDecodeFile, int &colSimbol, vector<int> &decodeAlphabet)
  * ______________________________________________________________________________________________________________
  *
- * Reading the compressed file. At first read the information on the number of characters
- * that will be the result. Then reads the information for the construction of the MapSHPP
+ * Reading the compressed file. At first read the information of characters number
+ * that will be at result. Then reads the information for the construction of the vector
  * which will be stored symbols and their frequency, and then reads the entire encoded text.
  *
  * @param nameDecodeFile - file name
  * @param colSimbol - number of symbols in the source file
- * @param decodeAlphabet - MapSHPP in which stored all characters and the frequency of their use
+ * @param decodeAlphabet - vector in which stored all characters and the frequency of their use
  * @return - returns the encoded text in a row
  */
-string readFileDecode (string nameDecodeFile, int &colSimbol, MapSHPP<char, int> &decodeAlphabet){
+string readFileDecode(string nameDecodeFile, int &colSimbol, vector<int> &decodeAlphabet){
     string textForDecode;
-    string codeFile;
     // reads the entire file in binary mode into a string
     ifstream inCodeFile(nameDecodeFile, ifstream::binary);
     if(inCodeFile){
@@ -349,41 +363,37 @@ string readFileDecode (string nameDecodeFile, int &colSimbol, MapSHPP<char, int>
         char * buffer = new char[length];
         inCodeFile.read(buffer, length);
 
-        for (int i = 0; i < length; i++){
-            codeFile += buffer[i];
-        }
-
         string toIntRes;
-        char ch;
+        unsigned char ch;
         string colSimbolStr;
 
         int k = 0;
         char tmp;
 
         // reads the number of characters of text
-        while(codeFile[k] != '{'){
-            tmp = codeFile[k];
+        while(buffer[k] != '{'){
+            tmp = buffer[k];
             colSimbolStr += tmp;
             k++;
         }
         colSimbol = stringToInteger(colSimbolStr);
 
         // reads cipher by which one can decrypt the text
-        for(int i = k; i < codeFile.size(); i++){
-            char tmp = codeFile[i];
-            if ((codeFile[i-1] == ';' || codeFile[i-1] == '{')  && codeFile[i+1] == ':'){
+        for(int i = k; i < length; i++){
+            char tmp = buffer[i];
+            if ((buffer[i-1] == ';' || buffer[i-1] == '{')  && buffer[i+1] == ':'){
                 ch = tmp;
             } else if (tmp >= '0' && tmp <= '9'){
                 toIntRes = toIntRes + charToString(tmp);
-                if (codeFile[i+1] == ';' ){
-                    decodeAlphabet.put(ch, stringToInteger(toIntRes));
+                if (buffer[i+1] == ';' ){
+                    decodeAlphabet[ch] = stringToInteger(toIntRes);
                     toIntRes = "";
                 }
-                if (codeFile[i+2] == '}' && codeFile[i+3] == '}'){
+                if (buffer[i+2] == '}' && buffer[i+3] == '}'){
 
                     // reads into a string all the encoded text
-                    for(int j = i+4; j < codeFile.length(); j++){
-                        textForDecode += codeFile[j];
+                    for(int j = i+4; j < length; j++){
+                        textForDecode += buffer[j];
                     }
                     return textForDecode;
 
@@ -391,12 +401,15 @@ string readFileDecode (string nameDecodeFile, int &colSimbol, MapSHPP<char, int>
                 }
             }
         }
+    } else {
+        cout << "An error has occurred, most likely you have entered a non-existent file name." << endl;
+        exit(1);
     }
     return textForDecode;
 }
 
 /**
- * Method: writeDecodeFile
+ * Function: writeDecodeFile
  * Using: writeDecodeFile(BSTNode* decodeTree, string &textForDecode, string decodeFileName, int colSimbol)
  * _______________________________________________________________________________________________________
  *
@@ -409,26 +422,53 @@ string readFileDecode (string nameDecodeFile, int &colSimbol, MapSHPP<char, int>
  * @param colSimbol - number of characters in the source file
  */
 void writeDecodeFile(BSTNode* decodeTree, string &textForDecode, string decodeFileName, int colSimbol){
-    istringbitstream readString(textForDecode);
-    ofstream decodeFile(decodeFileName);
+    string strBool;
+    for(int i = 0; i < colSimbol; i++){
+        strBool += bitsOfByteInString(textForDecode[i]);
+    }
+    ofstream decodeFile(decodeFileName, ios::out | ios::binary);
     int tmp = 5;
     int col = 0;
+    string tmpRes;
     BSTNode* top = decodeTree;
     BSTNode* tmpNode = decodeTree;
-    while(tmp != -1){
+    for(int j = 0; j < strBool.size(); j++){
 
-        tmp = readString.readBit();
-        if(tmp == 0){
+        tmp = (strBool[j]);
+        if(tmp == '0'){
             tmpNode = tmpNode->left;
-        } else{
+        } else {
             tmpNode = tmpNode->right;
         }
-        if(tmpNode->ch != 0){
-            decodeFile << tmpNode->ch;
+        if(tmpNode->busy){
+            tmpRes += tmpNode->ch;
             col++;
-            if(col == colSimbol)break;
             tmpNode = top;
+            if(col == colSimbol){
+                decodeFile << tmpRes;
+                break;
+            }
         }
     }
     decodeFile.close();
+}
+
+/**
+ * Function: bitsOfByteInString
+ * Using: bitsOfByteInString(char ch)
+ * ___________________________________
+ *
+ * Function adds a bit of char to a string,
+ * and then returns it
+ *
+ * @param ch - character from which to remove bits
+ * @return a string of eight characters
+ */
+string bitsOfByteInString(char ch){
+    string result;
+    for(int i = DATABITS - 1; i >= 0; i--){
+        int bit = (ch >> i) & 1;
+        result += integerToString(bit);
+    }
+    return result;
 }
